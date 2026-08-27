@@ -1,0 +1,13 @@
+line-length = 100
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+# gui.py must call gi.require_version() before importing from gi.repository,
+# so its imports cannot all sit at the top of the file.
+ignore = ["E402"]
+
+[lint.per-file-ignores]
+# SIM300 wants "expected == actual" in comparisons it reads as Yoda conditions.
+# In tests the natural order is the other way round, and reversing it makes the
+# assertions harder to read for no benefit.
+"tests/*" = ["SIM300"]

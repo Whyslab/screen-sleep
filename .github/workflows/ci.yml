@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    name: Lint and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tooling
+        run: pip install ruff pytest
+
+      - name: Lint
+        run: ruff check .
+
+      # The GUI needs GTK, but the logic under test — the schedule, the config
+      # parser, the hypridle.conf generator — does not, so the suite runs on a
+      # plain runner with no display.
+      - name: Tests
+        run: pytest tests/ -q
+
+  shell:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check
+        run: find . -name '*.sh' -print0 | xargs -0 -n1 bash -n
+
+      - name: ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          severity: warning
+
+  install:
+    name: Sandbox install and uninstall
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # A sandbox install must place every file where it promises and leave
+      # nothing behind when undone.
+      - name: Install into a sandbox, then remove it
+        run: |
+          set -euo pipefail
+          SB=$(mktemp -d)
+          ./install.sh --prefix "$SB"
+          for f in .local/share/screen-sleep/gui.py \
+                   .local/share/applications/screen-sleep.desktop \
+                   .config/systemd/user/screen-sleep-daemon.service; do
+            test -e "$SB$HOME/$f" || { echo "::error::missing $f"; exit 1; }
+          done
+          if grep -rq '__APP_DIR__' "$SB"; then
+            echo "::error::unsubstituted placeholder left behind"; exit 1
+          fi
+          ./uninstall.sh --prefix "$SB" --purge
+          left=$(find "$SB" -type f | wc -l)
+          [ "$left" -eq 0 ] || { echo "::error::$left files left behind"; find "$SB" -type f; exit 1; }
+
+  privacy:
+    name: Nothing personal shipped
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: No personal identifiers, no hard-coded home paths
+        run: |
+          set -euo pipefail
+          status=0
+          if grep -rniE 'bogdan|dodg1403' . --exclude-dir=.git --exclude='ci.yml'; then
+            echo "::error::personal identifier found"; status=1
+          fi
+          if grep -rnE '/home/[a-z][a-z0-9_-]*/' . --exclude-dir=.git --exclude='*.md' --exclude='ci.yml'; then
+            echo "::error::hard-coded home path found"; status=1
+          fi
+          if grep -rlIP '[\x{0400}-\x{04FF}]' . --exclude-dir=.git --exclude='*.ru.md' --exclude='README.md'; then
+            echo "::error::untranslated text found"; status=1
+          fi
+          exit "$status"

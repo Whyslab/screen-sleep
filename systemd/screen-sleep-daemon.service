@@ -1,0 +1,12 @@
+[Unit]
+Description=Screen & Sleep — night filter schedule and idle timings
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 __APP_DIR__/daemon.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

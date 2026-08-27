@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Screen & Sleep
+GenericName=Idle and night filter settings
+Comment=When the screen dims, locks and suspends; and the night filter
+Exec=python3 __APP_DIR__/gui.py
+Icon=preferences-desktop-display
+Terminal=false
+Categories=Settings;DesktopSettings;
+Keywords=sleep;idle;lock;screen;night;filter;blue;light;suspend;dpms;
+StartupNotify=false
