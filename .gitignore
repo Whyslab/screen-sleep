@@ -4,3 +4,6 @@ __pycache__/
 .pytest_cache/
 *.swp
 .DS_Store
+
+# graphify knowledge graph (regenerate with: graphify update .)
+graphify-out/
