@@ -245,6 +245,7 @@ class ScreenSleepWindow(Gtk.Window):
         self.set_resizable(False)
         self.connect("destroy", Gtk.main_quit)
         self.connect("key-press-event", self._on_key_press)
+        self.connect("key-release-event", self._on_key_release)
 
         self.config = load_config()
         # what is on screen now and the scheduled target are different things
@@ -260,7 +261,17 @@ class ScreenSleepWindow(Gtk.Window):
         self._run_startup_checks()
         GLib.timeout_add_seconds(5, self._refresh_current_temp)
 
+    # Escape is swallowed on press, but the window is closed on release.
+    # Closing on press makes Hyprland hand focus to the window underneath and
+    # send it wl_keyboard.enter with the keys that are still physically held —
+    # Firefox sees Escape there and drops out of YouTube fullscreen.
+    # On release we still own the focus, so nothing leaks through.
     def _on_key_press(self, widget, event):
+        if event.keyval == Gdk.KEY_Escape:
+            return True
+        return False
+
+    def _on_key_release(self, widget, event):
         if event.keyval == Gdk.KEY_Escape:
             self.close()
             return True
