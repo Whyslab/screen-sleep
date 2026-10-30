@@ -40,12 +40,26 @@ APPLIED_POWER_FILE = "applied_power"
 def _dpms(state: str) -> str:
     """A shell command for hypridle that switches the monitor signal.
 
-    Hyprland 0.57+ (Lua config) only takes `hl.dsp.dpms({...})`, a .conf config
-    only `dpms off`; each rejects the other's form harmlessly ("Invalid
-    dispatcher" / a Lua error), so the Lua form goes first.
+    Hyprland 0.57+ (Lua config) only takes `hl.dsp.dpms({...})`; a .conf config
+    only `dpms off`, and answers the Lua form "Invalid dispatcher". The plain
+    form follows only that answer: under Lua `hyprctl dispatch <text>` runs
+    <text> as Lua code.
     """
-    return (f"[ \"$(hyprctl dispatch 'hl.dsp.dpms({{ action = \"{state}\" }})')\" = ok ]"
-            f" || hyprctl dispatch dpms {state}")
+    return (f"case \"$(hyprctl dispatch 'hl.dsp.dpms({{ action = \"{state}\" }})')\" in "
+            f"*\"Invalid dispatcher\"*) hyprctl dispatch dpms {state} ;; esac")
+
+
+def _lua_str(text: str) -> str:
+    """A Lua string literal. Not json.dumps: Lua has no \\uXXXX escapes."""
+    out = []
+    for ch in text:
+        if ch in '\\"':
+            out.append("\\" + ch)
+        elif ord(ch) < 32 or ord(ch) == 127:
+            out.append(f"\\{ord(ch):03d}")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
 
 STEP_SPECS = {
     "dim": {
@@ -224,11 +238,11 @@ def hypr_exec(command: str) -> None:
     """Start `command` through Hyprland, so it outlives us (plain .conf or Lua config).
 
     Under a Lua config (Hyprland 0.57+) only `hl.dsp.exec_cmd(...)` is accepted;
-    a .conf config rejects that as an unknown dispatcher, so fall back.
+    a .conf config answers it "Invalid dispatcher" -- only then the plain form.
     """
-    lua = subprocess.run(["hyprctl", "dispatch", f"hl.dsp.exec_cmd({json.dumps(command)})"],
+    lua = subprocess.run(["hyprctl", "dispatch", f"hl.dsp.exec_cmd({_lua_str(command)})"],
                          capture_output=True, text=True, timeout=5, env=_env_c())
-    if lua.stdout.strip() != "ok":
+    if "Invalid dispatcher" in lua.stdout:
         subprocess.run(["hyprctl", "dispatch", "exec", command],
                        capture_output=True, text=True, timeout=5, env=_env_c())
 
