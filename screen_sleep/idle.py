@@ -13,6 +13,7 @@ hypridle cannot reload its config and knows nothing about batteries, hence:
 """
 
 import contextlib
+import json
 import os
 import re
 import signal
@@ -34,6 +35,18 @@ APPLIED_POWER_FILE = "applied_power"
 
 # The commands are deliberately the stock hypridle ones — only the timings and
 # whether a step exists at all are changed.
+
+
+def _dpms(state: str) -> str:
+    """A shell command for hypridle that switches the monitor signal.
+
+    Hyprland 0.57+ (Lua config) only takes `hl.dsp.dpms({...})`, a .conf config
+    only `dpms off`; each rejects the other's form harmlessly ("Invalid
+    dispatcher" / a Lua error), so the Lua form goes first.
+    """
+    return (f"[ \"$(hyprctl dispatch 'hl.dsp.dpms({{ action = \"{state}\" }})')\" = ok ]"
+            f" || hyprctl dispatch dpms {state}")
+
 STEP_SPECS = {
     "dim": {
         "var": "dim_timeout",
@@ -53,8 +66,8 @@ STEP_SPECS = {
         "var": "dpms_timeout",
         "note": "switch the monitor signal off (DPMS off)",
         "comment": "Turn the monitor off rather than burn the panel for nothing",
-        "on_timeout": "hyprctl dispatch dpms off",
-        "on_resume": "hyprctl dispatch dpms on",
+        "on_timeout": _dpms("off"),
+        "on_resume": _dpms("on"),
     },
     "suspend": {
         "var": "suspend_timeout",
@@ -207,14 +220,26 @@ def hypridle_running() -> bool:
         return False
 
 
+def hypr_exec(command: str) -> None:
+    """Start `command` through Hyprland, so it outlives us (plain .conf or Lua config).
+
+    Under a Lua config (Hyprland 0.57+) only `hl.dsp.exec_cmd(...)` is accepted;
+    a .conf config rejects that as an unknown dispatcher, so fall back.
+    """
+    lua = subprocess.run(["hyprctl", "dispatch", f"hl.dsp.exec_cmd({json.dumps(command)})"],
+                         capture_output=True, text=True, timeout=5, env=_env_c())
+    if lua.stdout.strip() != "ok":
+        subprocess.run(["hyprctl", "dispatch", "exec", command],
+                       capture_output=True, text=True, timeout=5, env=_env_c())
+
+
 def restart_hypridle() -> tuple[bool, str]:
     """hypridle does not reload its config — only a full restart works."""
     with contextlib.suppress(FileNotFoundError, subprocess.TimeoutExpired):
         subprocess.run(["/usr/bin/pkill", "-x", "hypridle"], capture_output=True, timeout=5)
     time.sleep(0.3)
     try:
-        subprocess.run(["hyprctl", "dispatch", "exec", "hypridle"],
-                       capture_output=True, text=True, timeout=5, env=_env_c())
+        hypr_exec("hypridle")
     except FileNotFoundError:
         return False, "hyprctl not found — is this a Hyprland session?"
     except subprocess.TimeoutExpired:

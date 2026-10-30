@@ -129,3 +129,31 @@ def test_read_current_timeouts_returns_minutes(tmp_path, monkeypatch):
 def test_read_current_timeouts_on_a_missing_file(tmp_path, monkeypatch):
     monkeypatch.setattr(idle, "HYPRIDLE_CONF", tmp_path / "nope.conf")
     assert idle.read_current_timeouts() == {}
+
+
+def test_dpms_commands_work_with_lua_and_conf_configs():
+    """Hyprland 0.57+ with a Lua config takes only hl.dsp.dpms, a .conf only `dpms off`."""
+    block = build_managed_block(profile(dpms=3), "ac")
+    off = ('[ "$(hyprctl dispatch \'hl.dsp.dpms({ action = "off" })\')" = ok ]'
+           " || hyprctl dispatch dpms off")
+    assert f"    on-timeout = {off}" in block
+    assert f"    on-resume = {off.replace('off', 'on')}" in block
+
+
+def test_hypridle_is_started_through_either_config_form(monkeypatch):
+    calls = []
+
+    def run(argv, **_kw):
+        calls.append(argv)
+        reply = "Invalid dispatcher" if argv[2].startswith("hl.dsp.") else "ok"
+        return idle.subprocess.CompletedProcess(argv, 0, stdout=reply, stderr="")
+
+    monkeypatch.setattr(idle.subprocess, "run", run)
+    idle.hypr_exec("hypridle")  # a .conf session: the Lua form is refused, the plain one runs
+    assert calls == [["hyprctl", "dispatch", 'hl.dsp.exec_cmd("hypridle")'],
+                     ["hyprctl", "dispatch", "exec", "hypridle"]]
+    calls.clear()
+    monkeypatch.setattr(idle.subprocess, "run", lambda argv, **kw: calls.append(argv)
+                        or idle.subprocess.CompletedProcess(argv, 0, stdout="ok\n", stderr=""))
+    idle.hypr_exec("hypridle")  # a Lua session: one call
+    assert calls == [["hyprctl", "dispatch", 'hl.dsp.exec_cmd("hypridle")']]
